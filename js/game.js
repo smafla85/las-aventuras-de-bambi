@@ -26,6 +26,18 @@ function loadImage(name, src) {
   });
 }
 
+// --- ¿Dispositivo táctil? (o ?touch=1 para probar) ---
+const IS_TOUCH = 'ontouchstart' in window ||
+  (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+  new URLSearchParams(location.search).get('touch') === '1';
+if (IS_TOUCH) document.body.classList.add('touch');
+
+// Adapta los textos de ayuda al dispositivo
+function uiText(text) {
+  if (!IS_TOUCH) return text;
+  return text.replace(/con ESPACIO/g, 'con el botón 💗').replace(/ESPACIO/g, 'el botón 💗');
+}
+
 // --- Entrada de teclado ---
 const keys = {};
 window.addEventListener('keydown', (e) => {
@@ -38,6 +50,38 @@ window.addEventListener('keydown', (e) => {
   if (e.key === ' ') e.preventDefault();
 });
 window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+// --- Controles táctiles ---
+function bindTouchButton(id, key) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const press = (e) => {
+    e.preventDefault();
+    keys[key] = true;
+    AudioSys.ensure();
+    if (state === 'title') AudioSys.play('title');
+  };
+  const release = (e) => { e.preventDefault(); keys[key] = false; };
+  el.addEventListener('touchstart', press, { passive: false });
+  el.addEventListener('touchend', release);
+  el.addEventListener('touchcancel', release);
+  el.addEventListener('mousedown', press);
+  el.addEventListener('mouseup', release);
+  el.addEventListener('mouseleave', () => { keys[key] = false; });
+}
+bindTouchButton('btnUp', 'arrowup');
+bindTouchButton('btnDown', 'arrowdown');
+bindTouchButton('btnLeft', 'arrowleft');
+bindTouchButton('btnRight', 'arrowright');
+bindTouchButton('btnHeart', ' ');
+
+// Tocar la pantalla del juego = ENTER (comenzar / continuar)
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  AudioSys.ensure();
+  if (state === 'title') AudioSys.play('title');
+  handleEnter();
+}, { passive: false });
 
 // ============================================
 // NIVELES
@@ -614,7 +658,7 @@ function drawHud() {
   if (villain && !villain.dead) {
     ctx.font = '12px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('ESPACIO: lanzar corazones 💗', 12, canvas.height - 10);
+    ctx.fillText(IS_TOUCH ? 'Botón 💗: lanzar corazones' : 'ESPACIO: lanzar corazones 💗', 12, canvas.height - 10);
   }
 }
 
@@ -691,7 +735,7 @@ function drawTitle() {
   if (Math.floor(time * 2) % 2 === 0) {
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 18px monospace';
-    ctx.fillText('Presione ENTER para comenzar', canvas.width / 2, 445);
+    ctx.fillText(IS_TOUCH ? 'Toque la pantalla para comenzar' : 'Presione ENTER para comenzar', canvas.width / 2, 445);
   }
   ctx.textAlign = 'left';
 }
@@ -714,12 +758,13 @@ function drawTextBox(title, text) {
 
   ctx.fillStyle = '#ffffff';
   ctx.font = '14px monospace';
-  wrapText(text, 40, textY, canvas.width - 80, 19);
+  wrapText(uiText(text), 40, textY, canvas.width - 80, 19);
 
   if (Math.floor(time * 2) % 2 === 0) {
     ctx.fillStyle = '#aaaacc';
     ctx.font = '13px monospace';
-    ctx.fillText('ENTER para continuar ▶', canvas.width - 240, boxY + 98);
+    const cont = IS_TOUCH ? 'Toque la pantalla para continuar ▶' : 'ENTER para continuar ▶';
+    ctx.fillText(cont, canvas.width - ctx.measureText(cont).width - 40, boxY + 98);
   }
 }
 
@@ -763,7 +808,7 @@ function drawWin() {
   ctx.fillStyle = '#aaaacc';
   ctx.font = '14px monospace';
   if (Math.floor(time * 2) % 2 === 0) {
-    ctx.fillText('ENTER para volver al título', canvas.width / 2, 450);
+    ctx.fillText(IS_TOUCH ? 'Toque la pantalla para volver al título' : 'ENTER para volver al título', canvas.width / 2, 450);
   }
   ctx.textAlign = 'left';
 }

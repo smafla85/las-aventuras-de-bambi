@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Las Aventuras de Bambi</title>
+  <style>
+    body {
+      margin: 0;
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: monospace;
+      color: #e0e0e0;
+    }
+    h1 { margin-bottom: 8px; }
+    canvas {
+      border: 3px solid #4a4a6a;
+      border-radius: 4px;
+      image-rendering: pixelated;
+      background: #2d5a27;
+    }
+    p { color: #8888aa; }
+  </style>
+</head>
+<body>
+  <h1>🗡️ Las Aventuras de Bambi</h1>
+  <canvas id="game" width="640" height="480"></canvas>
+  <p>Muévase con WASD o las flechas · ESPACIO lanza corazones 💗 · M silencia la música</p>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

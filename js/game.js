@@ -1,7 +1,8 @@
 // ============================================
 // LAS AVENTURAS DE BAMBI
-// Sebastián debe rescatar a la princesa Pamela — 3 niveles
+// Sebastián debe rescatar a la princesa Pamela — 4 niveles
 // Villanos: El Miedo, Las Dudas y EL PASADO
+// Nivel 3: La Prueba del Corazón (2 preguntas de opción múltiple)
 // Se vencen lanzando corazones de amor (ESPACIO)
 // Gráficos: pack CC0 "Zelda-like" de ArMM1998 (ver assets/CREDITS.md)
 // ============================================
@@ -46,6 +47,7 @@ window.addEventListener('keydown', (e) => {
   AudioSys.ensure();
   if (state === 'title') AudioSys.play('title');
   if (e.key.toLowerCase() === 'm') AudioSys.toggleMute();
+  if (state === 'quiz') { handleQuizKey(e); return; }
   if (e.key === 'Enter') handleEnter();
   if (e.key === ' ') e.preventDefault();
 });
@@ -80,8 +82,17 @@ canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   AudioSys.ensure();
   if (state === 'title') AudioSys.play('title');
+  if (state === 'quiz') { handleQuizPointer(e); return; }
   handleEnter();
 }, { passive: false });
+
+// Clic del ratón (PC): elegir opción en el quiz o continuar diálogos
+canvas.addEventListener('mousedown', (e) => {
+  AudioSys.ensure();
+  if (state === 'title') { AudioSys.play('title'); handleEnter(); return; }
+  if (state === 'quiz') { handleQuizPointer(e); return; }
+  handleEnter();
+});
 
 // ============================================
 // NIVELES
@@ -157,7 +168,27 @@ const LEVELS = [
     ],
   },
   {
-    name: 'Nivel 3 — El Castillo',
+    name: 'Nivel 3 — La Prueba del Corazón',
+    type: 'quiz',
+    theme: 'title', // vals romántico para el momento tierno
+    intro: 'Antes del último desafío, el corazón le pone dos pruebas a Sebastián. No son de espada ni de valor... son de amor. Responda desde el corazón, mi amor. ♥',
+    questions: [
+      {
+        q: '¿Cuál fue nuestro primer concierto?',
+        options: ['Bad Bunny', 'Aventura', 'Enanitos Verdes', 'Bronco'],
+        correct: 3,
+        onCorrect: '¡Exacto! Bronco... y desde esa noche, cada canción me recuerda a usted. ♥',
+      },
+      {
+        q: '¿La fecha de nuestro aniversario?',
+        options: ['25 de Diciembre', '19 de Agosto', '1 de Enero', '15 de Marzo'],
+        correct: 1,
+        onCorrect: '¡El 19 de Agosto! El día en que mi vida se volvió más bonita a su lado. ♥',
+      },
+    ],
+  },
+  {
+    name: 'Nivel 4 — El Castillo',
     theme: 'castle',
     start: { col: 9, row: 13 },
     intro: 'La sala del trono. Pamela y su fiel perrita Sasha están tan cerca... pero el último guardián es EL PASADO, el más difícil de vencer: rápido, pesado y terco. No mire atrás, Sebastián: lance todo su amor con ESPACIO.',
@@ -206,6 +237,8 @@ const PLAYER_MAX_HP = 5;
 let msgText = '';
 let msgAfter = null;  // qué hacer al cerrar el mensaje
 let time = 0;
+let quiz = null;            // estado del nivel de preguntas
+let quizOptionRects = [];   // cajas de las opciones (para tocar/clic)
 
 function tileAt(col, row) {
   if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return 'T';
@@ -225,6 +258,19 @@ function tileHash(col, row) {
 function loadLevel(i) {
   levelIndex = i;
   level = LEVELS[i];
+
+  // Nivel de preguntas: no hay mapa ni combate, solo la prueba del corazón
+  if (level.type === 'quiz') {
+    quiz = { qIndex: 0, selected: 0, locked: false };
+    villain = null;
+    pamela = null;
+    hearts = [];
+    entitiesStatic = [];
+    state = 'intro';
+    AudioSys.play(level.theme);
+    return;
+  }
+
   player.x = level.start.col * TILE + 5;
   player.y = level.start.row * TILE + 12;
   player.dir = 'up';
@@ -278,7 +324,7 @@ function showMsg(text, after) {
 
 function handleEnter() {
   if (state === 'title') loadLevel(0);
-  else if (state === 'intro') state = 'playing';
+  else if (state === 'intro') state = (level.type === 'quiz') ? 'quiz' : 'playing';
   else if (state === 'msg') {
     const after = msgAfter;
     msgAfter = null;
@@ -287,6 +333,67 @@ function handleEnter() {
   } else if (state === 'win') {
     state = 'title';
     AudioSys.play('title');
+  }
+}
+
+// ============================================
+// NIVEL DE PREGUNTAS (La Prueba del Corazón)
+// ============================================
+function answerQuiz(index) {
+  if (!quiz || quiz.locked) return;
+  const q = level.questions[quiz.qIndex];
+  quiz.selected = index;
+  if (index === q.correct) {
+    quiz.locked = true;
+    AudioSys.sfx.villainDown(); // arpegio de acierto
+    showMsg(q.onCorrect, () => {
+      if (quiz.qIndex + 1 < level.questions.length) {
+        quiz.qIndex++;
+        quiz.selected = 0;
+        quiz.locked = false;
+        state = 'quiz';
+      } else {
+        AudioSys.sfx.exit();
+        loadLevel(levelIndex + 1); // superada la prueba → El Castillo
+      }
+    });
+  } else {
+    AudioSys.sfx.hurt();
+    showMsg(q.onWrong || 'Mmm... esa no es. Pero está bien: piénselo otra vez, mi amor. ♥',
+      () => { state = 'quiz'; });
+  }
+}
+
+function handleQuizKey(e) {
+  if (!quiz || quiz.locked) return;
+  const q = level.questions[quiz.qIndex];
+  const n = q.options.length;
+  const k = e.key.toLowerCase();
+  if (k === 'arrowup' || k === 'w') { quiz.selected = (quiz.selected - 1 + n) % n; AudioSys.sfx.shoot(); }
+  else if (k === 'arrowdown' || k === 's') { quiz.selected = (quiz.selected + 1) % n; AudioSys.sfx.shoot(); }
+  else if (k >= '1' && k <= '9') { const i = Number(k) - 1; if (i < n) answerQuiz(i); }
+  else if (k === 'enter' || k === ' ') { e.preventDefault(); answerQuiz(quiz.selected); }
+}
+
+// Convierte un evento de puntero a coordenadas internas del canvas (640×480)
+function canvasToXY(e) {
+  const r = canvas.getBoundingClientRect();
+  const p = e.touches && e.touches[0] ? e.touches[0] : e;
+  return {
+    x: (p.clientX - r.left) / r.width * canvas.width,
+    y: (p.clientY - r.top) / r.height * canvas.height,
+  };
+}
+
+function handleQuizPointer(e) {
+  if (!quiz || quiz.locked) return;
+  const { x, y } = canvasToXY(e);
+  for (let i = 0; i < quizOptionRects.length; i++) {
+    const b = quizOptionRects[i];
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      answerQuiz(i);
+      return;
+    }
   }
 }
 
@@ -813,6 +920,94 @@ function drawWin() {
   ctx.textAlign = 'left';
 }
 
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawQuiz() {
+  // Fondo romántico con corazones flotando
+  ctx.fillStyle = '#2a1730';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '18px serif';
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = 0.28;
+  for (let i = 0; i < 12; i++) {
+    const fx = (i * 113 + 30) % canvas.width;
+    const fy = (canvas.height + 40 - ((time * (14 + i * 3) + i * 83) % (canvas.height + 80)));
+    ctx.fillText(i % 3 === 0 ? '💖' : '💗', fx, fy);
+  }
+  ctx.globalAlpha = 1;
+
+  const q = level.questions[quiz.qIndex];
+
+  // Encabezado
+  ctx.fillStyle = '#ff9fc8';
+  ctx.font = 'bold 15px monospace';
+  ctx.fillText(level.name, canvas.width / 2, 44);
+  ctx.fillStyle = '#ffe9a8';
+  ctx.font = '13px monospace';
+  ctx.fillText('Pregunta ' + (quiz.qIndex + 1) + ' de ' + level.questions.length, canvas.width / 2, 70);
+
+  // Enunciado (centrado, con salto de línea)
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 20px monospace';
+  wrapText(q.q, canvas.width / 2, 118, canvas.width - 100, 26);
+
+  // Opciones como botones
+  const letters = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const optW = 460, optH = 50, gap = 14, startY = 190;
+  const optX = (canvas.width - optW) / 2;
+  quizOptionRects = [];
+  ctx.textAlign = 'left';
+  q.options.forEach((opt, i) => {
+    const y = startY + i * (optH + gap);
+    quizOptionRects.push({ x: optX, y, w: optW, h: optH });
+    const selected = i === quiz.selected;
+
+    roundRect(optX, y, optW, optH, 12);
+    ctx.fillStyle = selected ? 'rgba(255,95,158,0.28)' : 'rgba(255,255,255,0.06)';
+    ctx.fill();
+    ctx.lineWidth = selected ? 3 : 2;
+    ctx.strokeStyle = selected ? '#ff5f9e' : '#5a4a6a';
+    ctx.stroke();
+
+    ctx.fillStyle = selected ? '#ffd9ea' : '#cfc3d8';
+    ctx.font = 'bold 17px monospace';
+    ctx.fillText(letters[i] + ')', optX + 18, y + optH / 2 + 6);
+    ctx.font = '17px monospace';
+    ctx.fillStyle = selected ? '#ffffff' : '#e0d8ea';
+    ctx.fillText(opt, optX + 52, y + optH / 2 + 6);
+
+    if (selected) {
+      ctx.font = '18px serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('💗', optX + optW - 16, y + optH / 2 + 7);
+      ctx.textAlign = 'left';
+    }
+  });
+
+  // Ayuda inferior
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '12px monospace';
+  ctx.fillText(IS_TOUCH ? 'Toque la respuesta correcta' : 'Use ▲ ▼ y ENTER · o haga clic en una opción',
+    canvas.width / 2, canvas.height - 16);
+  ctx.textAlign = 'left';
+}
+
+// Fondo bajo las cajas de texto (mapa normal o pantalla del quiz)
+function drawBackground() {
+  if (level && level.type === 'quiz') drawQuiz();
+  else drawScene();
+}
+
 // ============================================
 // BUCLE PRINCIPAL
 // ============================================
@@ -826,10 +1021,12 @@ function gameLoop(timestamp) {
   if (state === 'title') {
     drawTitle();
   } else if (state === 'intro') {
-    drawScene();
+    drawBackground();
     drawTextBox(level.name, level.intro);
+  } else if (state === 'quiz') {
+    drawQuiz();
   } else if (state === 'msg') {
-    drawScene();
+    drawBackground();
     drawTextBox(null, msgText);
   } else if (state === 'playing') {
     updatePlayer(dt);
@@ -861,7 +1058,7 @@ Promise.all([
 ]).then(() => {
   // Depuración: abrir con ?lvl=N para saltar directo a un nivel
   const lvl = new URLSearchParams(location.search).get('lvl');
-  if (lvl !== null) { loadLevel(Number(lvl)); state = 'playing'; }
+  if (lvl !== null) { loadLevel(Number(lvl)); if (level.type !== 'quiz') state = 'playing'; }
   requestAnimationFrame(gameLoop);
 }).catch(() => {
   ctx.fillStyle = '#fff';

@@ -1035,8 +1035,9 @@ function gameLoop(timestamp) {
       updateHearts(dt);
     }
     if (state === 'win') drawWin();
-    else if (state === 'msg') { drawScene(); drawTextBox(null, msgText); }
-    else if (state === 'intro') { drawScene(); drawTextBox(level.name, level.intro); }
+    else if (state === 'msg') { drawBackground(); drawTextBox(null, msgText); }
+    else if (state === 'intro') { drawBackground(); drawTextBox(level.name, level.intro); }
+    else if (state === 'quiz') drawQuiz();
     else drawScene();
   } else if (state === 'win') {
     drawWin();

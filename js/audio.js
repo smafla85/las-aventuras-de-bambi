@@ -67,6 +67,11 @@ const AudioSys = (() => {
       mel: [72,76,79,84,_,83,84,_, 81,79,81,_,79,_,76,_, 72,76,79,84,_,83,84,_, 86,_,84,_,_,_,_,_],
       bass: [48,_,_,_,55,_,_,_, 53,_,_,_,55,_,_,_, 48,_,_,_,55,_,_,_, 55,_,55,_,48,_,_,_],
     },
+    garden: { // Vals tierno en Fa mayor, para el paseo del Jardín de los Recuerdos
+      bpm: 84, lead: 'triangle', leadVol: 0.055,
+      mel: [65,_,69,_,72,_,69,_, 74,_,72,_,69,_,67,_, 65,_,69,_,72,_,77,_, 76,_,74,_,72,_,_,_],
+      bass: [41,_,_,_,48,_,_,_, 46,_,_,_,50,_,_,_, 41,_,_,_,48,_,_,_, 48,_,46,_,41,_,_,_],
+    },
   };
 
   // Secuenciador: agenda las notas un poco por delante del reloj de audio
@@ -118,6 +123,11 @@ const AudioSys = (() => {
       ensure();
       const t0 = ctx.currentTime;
       [79, 84].forEach((m, i) => tone(t0 + i * 0.12, m, 0.2, 'triangle', 0.07));
+    },
+    collect() {
+      ensure();
+      const t0 = ctx.currentTime;
+      [76, 81, 86].forEach((m, i) => tone(t0 + i * 0.07, m, 0.16, 'triangle', 0.055));
     },
   };
 

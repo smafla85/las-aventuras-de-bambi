@@ -1,8 +1,10 @@
 // ============================================
 // LAS AVENTURAS DE BAMBI
-// Sebastián debe rescatar a la princesa Pamela — 4 niveles
+// Sebastián debe rescatar a la princesa Pamela — 5 niveles
 // Villanos: El Miedo, Las Dudas y EL PASADO
-// Nivel 3: La Prueba del Corazón (2 preguntas de opción múltiple)
+// Nivel 3: El Jardín de los Recuerdos (recolección, sin combate)
+// Nivel 4: La Prueba del Corazón (2 preguntas de opción múltiple)
+// Tras el FIN: epílogo "Su futuro juntos"
 // Se vencen lanzando corazones de amor (ESPACIO)
 // Gráficos: pack CC0 "Zelda-like" de ArMM1998 (ver assets/CREDITS.md)
 // ============================================
@@ -168,7 +170,45 @@ const LEVELS = [
     ],
   },
   {
-    name: 'Nivel 3 — La Prueba del Corazón',
+    name: 'Nivel 3 — El Jardín de los Recuerdos',
+    type: 'collect',
+    theme: 'forest',
+    start: { col: 9, row: 13 },
+    intro: 'Antes de la Prueba del Corazón, un pequeño paseo. Recoja los cinco corazones escondidos en el jardín: cada uno guarda un recuerdo. Muévase con las flechas y déjese llevar, mi amor. ♥',
+    decor: [
+      { e: '🦋', c: 5, r: 3, s: 20, bob: true },
+      { e: '🦋', c: 14, r: 10, s: 18, bob: true },
+      { e: '🌷', c: 2, r: 5, s: 20 },
+      { e: '🌷', c: 17, r: 9, s: 20 },
+      { e: '✨', c: 9, r: 5, s: 16, bob: true },
+    ],
+    collectibles: [
+      { col: 9, row: 2, text: 'Un recuerdo dulce: aquella noche coreando con usted en el concierto de Bronco. Desde entonces, cada canción sabe a usted. ♥' },
+      { col: 15, row: 6, text: 'El 19 de agosto sigue siendo el día favorito de Sebastián: el día en que todo empezó. ♥' },
+      { col: 9, row: 8, text: 'Sasha, la perrita negra, siempre corre primero a recibirlo a usted. El amor también tiene cuatro patas. ♥' },
+      { col: 3, row: 10, text: 'Ahora también está Apolo, un potrillo de apenas ocho meses, aprendiendo a correr igual de rápido que este corazón. ♥' },
+      { col: 15, row: 12, text: 'Y en un rincón de la casa espera Balu_chón, el peluche gigante, guardando abrazos para cuando usted llegue. ♥' },
+    ],
+    map: [
+      'TTTTTTTTTTTTTTTTTTTT',
+      'T..................T',
+      'T..f............f..T',
+      'T..................T',
+      'T....WWWW.......f..T',
+      'T....WWWW..........T',
+      'T..................T',
+      'T..........b.......E',
+      'T..................E',
+      'T..f..........f....T',
+      'T..................T',
+      'T....f........f....T',
+      'T..................T',
+      'T..................T',
+      'TTTTTTTTTTTTTTTTTTTT',
+    ],
+  },
+  {
+    name: 'Nivel 4 — La Prueba del Corazón',
     type: 'quiz',
     theme: 'title', // vals romántico para el momento tierno
     intro: 'Antes del último desafío, el corazón le pone dos pruebas a Sebastián. No son de espada ni de valor... son de amor. Responda desde el corazón, mi amor. ♥',
@@ -188,7 +228,7 @@ const LEVELS = [
     ],
   },
   {
-    name: 'Nivel 4 — El Castillo',
+    name: 'Nivel 5 — El Castillo',
     theme: 'castle',
     start: { col: 9, row: 13 },
     intro: 'La sala del trono. Pamela y su fiel perrita Sasha están tan cerca... pero el último guardián es EL PASADO, el más difícil de vencer: rápido, pesado y terco. No mire atrás, Sebastián: lance todo su amor con ESPACIO.',
@@ -226,7 +266,7 @@ const LEVELS = [
 ];
 
 // --- Estado global ---
-let state = 'title'; // title | intro | playing | msg | win
+let state = 'title'; // title | intro | playing | msg | quiz | win | epilogue
 let levelIndex = 0;
 let level = LEVELS[0];
 let pamela = null;
@@ -239,6 +279,10 @@ let msgAfter = null;  // qué hacer al cerrar el mensaje
 let time = 0;
 let quiz = null;            // estado del nivel de preguntas
 let quizOptionRects = [];   // cajas de las opciones (para tocar/clic)
+let collected = [];         // recuerdos recogidos en el Jardín (booleans)
+let particles = [];         // partículas de estallido (corazones)
+let fade = 1;                // fundido entre escenas (1 = negro, 0 = visible)
+let ambientTimer = 10, ambientText = '', ambientAlpha = 0; // mensajes dulces ambientales
 
 function tileAt(col, row) {
   if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return 'T';
@@ -247,7 +291,10 @@ function tileAt(col, row) {
 
 function isSolid(col, row) {
   const t = tileAt(col, row);
-  if (t === 'E' && villain && !villain.dead) return true; // la salida se abre al vencer al villano
+  if (t === 'E') {
+    if (villain && !villain.dead) return true; // la salida se abre al vencer al villano
+    if (level.type === 'collect' && collected.some((c) => !c)) return true; // faltan recuerdos por recoger
+  }
   return 'TWSb'.includes(t);
 }
 
@@ -258,6 +305,10 @@ function tileHash(col, row) {
 function loadLevel(i) {
   levelIndex = i;
   level = LEVELS[i];
+  fade = 1;
+  particles = [];
+  ambientTimer = 10;
+  ambientAlpha = 0;
 
   // Nivel de preguntas: no hay mapa ni combate, solo la prueba del corazón
   if (level.type === 'quiz') {
@@ -266,6 +317,7 @@ function loadLevel(i) {
     pamela = null;
     hearts = [];
     entitiesStatic = [];
+    collected = [];
     state = 'intro';
     AudioSys.play(level.theme);
     return;
@@ -280,6 +332,7 @@ function loadLevel(i) {
   hearts = [];
   pamela = null;
   villain = null;
+  collected = level.type === 'collect' ? level.collectibles.map(() => false) : [];
 
   if (level.villain) {
     const v = level.villain;
@@ -331,6 +384,10 @@ function handleEnter() {
     state = 'playing';
     if (after) after();
   } else if (state === 'win') {
+    state = 'epilogue';
+    fade = 1;
+    AudioSys.play('title');
+  } else if (state === 'epilogue') {
     state = 'title';
     AudioSys.play('title');
   }
@@ -346,6 +403,7 @@ function answerQuiz(index) {
   if (index === q.correct) {
     quiz.locked = true;
     AudioSys.sfx.villainDown(); // arpegio de acierto
+    spawnBurst(canvas.width / 2, 200, '💖', 18);
     showMsg(q.onCorrect, () => {
       if (quiz.qIndex + 1 < level.questions.length) {
         quiz.qIndex++;
@@ -497,6 +555,24 @@ function updatePlayer(dt) {
     AudioSys.sfx.shoot();
   }
 
+  // ¿Recogió un recuerdo? (Jardín de los Recuerdos)
+  if (level.type === 'collect') {
+    level.collectibles.forEach((c, idx) => {
+      if (collected[idx]) return;
+      const cx = c.col * TILE + TILE / 2;
+      const cy = c.row * TILE + TILE / 2;
+      const px = player.x + player.w / 2;
+      const py = player.y + player.h / 2;
+      if (Math.hypot(px - cx, py - cy) < 20) {
+        collected[idx] = true;
+        spawnBurst(cx, cy, '💗', 14);
+        AudioSys.sfx.collect();
+        const allDone = collected.every(Boolean);
+        showMsg(c.text, allDone ? () => { AudioSys.sfx.exit(); loadLevel(levelIndex + 1); } : null);
+      }
+    });
+  }
+
   // ¿Pisamos una salida abierta?
   const centerCol = Math.floor((player.x + player.w / 2) / TILE);
   const centerRow = Math.floor((player.y + player.h / 2) / TILE);
@@ -535,6 +611,30 @@ function hurtPlayer() {
   if (playerHp <= 0) {
     showMsg('El amor nunca se rinde... ¡Inténtelo otra vez, Sebastián!', () => loadLevel(levelIndex));
   }
+}
+
+// ============================================
+// MENSAJES AMBIENTALES DULCES (no bloquean el juego)
+// ============================================
+const AMBIENT_MESSAGES = [
+  'Usted puede con todo, mi amor. ♥',
+  'Un paso más, y estaré ahí. ♥',
+  'Pamela y Sasha lo esperan con una sonrisa. ♥',
+  'Cada corazón que lanza está lleno de usted. ♥',
+];
+
+function updateAmbient(dt) {
+  if (!villain || villain.dead) {
+    ambientAlpha = Math.max(0, ambientAlpha - dt);
+    return;
+  }
+  ambientTimer -= dt;
+  if (ambientTimer <= 0) {
+    ambientText = AMBIENT_MESSAGES[Math.floor(Math.random() * AMBIENT_MESSAGES.length)];
+    ambientAlpha = 1;
+    ambientTimer = 22 + Math.random() * 14;
+  }
+  ambientAlpha = Math.max(0, ambientAlpha - dt / 3);
 }
 
 // ============================================
@@ -581,6 +681,7 @@ function updateHearts(dt) {
       if (villain.hp <= 0) {
         villain.dead = true;
         AudioSys.sfx.villainDown();
+        spawnBurst(villain.x, villain.y - 10 * villain.scale, '💗', 26);
         showMsg(villain.defeat);
       }
     }
@@ -628,6 +729,45 @@ function drawHearts() {
   for (const h of hearts) {
     ctx.fillText('💗', h.x, h.y + Math.sin(h.life * 20) * 2);
   }
+  ctx.textAlign = 'left';
+}
+
+// ============================================
+// SISTEMA DE PARTÍCULAS (estallidos de corazones)
+// ============================================
+function spawnBurst(x, y, symbol, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 40 + Math.random() * 90;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 30,
+      life: 0.5 + Math.random() * 0.5,
+      symbol: symbol || '💗',
+      size: 14 + Math.random() * 10,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 70 * dt;
+    p.life -= dt;
+  }
+  particles = particles.filter((p) => p.life > 0);
+}
+
+function drawParticles() {
+  ctx.textAlign = 'center';
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 2));
+    ctx.font = p.size + 'px serif';
+    ctx.fillText(p.symbol, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
   ctx.textAlign = 'left';
 }
 
@@ -745,27 +885,109 @@ function drawStatue(col, row) {
     x, y + TILE - STATUE.h * 2, STATUE.w * 2, STATUE.h * 2);
 }
 
-function drawHud() {
-  // Nombre del nivel
-  ctx.font = 'bold 14px monospace';
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(8, 8, ctx.measureText(level.name).width + 16, 26);
-  ctx.fillStyle = '#ffe9a8';
-  ctx.fillText(level.name, 16, 26);
+function drawApolo() {
+  // Apolo, el potrillo de ocho meses: trota de un lado a otro del jardín
+  const range = 90;
+  const baseX = 10 * TILE;
+  const baseY = 6 * TILE + TILE;
+  const t = time * 0.7;
+  const x = baseX + Math.sin(t) * range;
+  const dir = Math.cos(t) >= 0 ? 1 : -1;
+  const bob = Math.abs(Math.sin(t * 4)) * 3;
+  ctx.save();
+  ctx.font = '40px serif';
+  ctx.textAlign = 'center';
+  ctx.translate(x, baseY - bob);
+  ctx.scale(dir, 1);
+  ctx.fillText('🐴', 0, 0);
+  ctx.restore();
+}
 
-  // Vidas de Sebastián
-  ctx.font = '18px serif';
-  for (let i = 0; i < PLAYER_MAX_HP; i++) {
-    ctx.globalAlpha = i < playerHp ? 1 : 0.22;
-    ctx.fillText('❤️', canvas.width - 130 + i * 24, 28);
+function drawBaluChon() {
+  // Balu_chón, el peluche gigante: sentado, meciéndose apenas
+  const x = 15 * TILE + TILE / 2;
+  const y = 9 * TILE + TILE;
+  const bob = Math.sin(time * 1.5) * 3;
+  ctx.font = '64px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🧸', x, y + bob);
+  ctx.textAlign = 'left';
+}
+
+function drawCollectibles() {
+  if (level.type !== 'collect') return;
+  ctx.font = '22px serif';
+  ctx.textAlign = 'center';
+  level.collectibles.forEach((c, idx) => {
+    if (collected[idx]) return;
+    const bob = Math.sin(time * 3 + idx) * 4;
+    ctx.fillText('💗', c.col * TILE + TILE / 2, c.row * TILE + TILE / 2 + bob);
+  });
+  ctx.textAlign = 'left';
+}
+
+function drawVignette() {
+  if (level.theme !== 'cave') return;
+  const cx = player.x + player.w / 2;
+  const cy = player.y + player.h / 2;
+  const g = ctx.createRadialGradient(cx, cy, 40, cx, cy, 260);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.75)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawHud() {
+  // Panel del nombre de nivel (esquinas redondeadas + degradado)
+  ctx.font = 'bold 14px monospace';
+  const nameW = ctx.measureText(level.name).width + 20;
+  roundRect(8, 8, nameW, 28, 8);
+  const grad = ctx.createLinearGradient(8, 8, 8 + nameW, 8);
+  grad.addColorStop(0, 'rgba(40,20,50,0.8)');
+  grad.addColorStop(1, 'rgba(90,30,60,0.55)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,159,200,0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#ffe9a8';
+  ctx.fillText(level.name, 18, 27);
+
+  if (level.type === 'collect') {
+    const done = collected.filter(Boolean).length;
+    ctx.font = '12px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillText('Recuerdos: ' + done + ' / ' + level.collectibles.length, 12, 50);
   }
-  ctx.globalAlpha = 1;
+
+  // Vidas de Sebastián (con pulso si está en peligro)
+  if (level.type !== 'collect') {
+    ctx.font = '18px serif';
+    const lowHp = playerHp <= 2;
+    const pulse = lowHp ? 0.75 + Math.sin(time * 8) * 0.25 : 1;
+    for (let i = 0; i < PLAYER_MAX_HP; i++) {
+      ctx.globalAlpha = i < playerHp ? pulse : 0.22;
+      ctx.fillText('❤️', canvas.width - 130 + i * 24, 28);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // Recordatorio de control
   if (villain && !villain.dead) {
     ctx.font = '12px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fillText(IS_TOUCH ? 'Botón 💗: lanzar corazones' : 'ESPACIO: lanzar corazones 💗', 12, canvas.height - 10);
+  }
+
+  // Mensaje ambiental dulce
+  if (ambientAlpha > 0) {
+    ctx.globalAlpha = ambientAlpha;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd9ea';
+    ctx.font = 'italic 14px monospace';
+    ctx.fillText(ambientText, canvas.width / 2, canvas.height - 34);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -775,16 +997,23 @@ function drawScene() {
   else drawGroundCastle();
 
   drawDecor();
+  drawCollectibles();
 
   const entities = entitiesStatic.slice();
   entities.push({ baseline: player.y + player.h, draw: drawPlayer });
   if (villain && !villain.dead) {
     entities.push({ baseline: villain.y, draw: drawVillain });
   }
+  if (level.type === 'collect') {
+    entities.push({ baseline: 6 * TILE + TILE, draw: drawApolo });
+    entities.push({ baseline: 9 * TILE + TILE, draw: drawBaluChon });
+  }
   entities.sort((a, b) => a.baseline - b.baseline);
   entities.forEach((e) => e.draw());
 
   drawHearts();
+  drawParticles();
+  drawVignette();
   drawHud();
 }
 
@@ -808,9 +1037,30 @@ function wrapText(text, x, y, maxWidth, lineHeight) {
   return y;
 }
 
+function glowText(text, x, y, glowColor) {
+  ctx.save();
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = 14;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawTwinkleStars() {
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 24; i++) {
+    const sx = (i * 53 + 17) % canvas.width;
+    const sy = (i * 37 + 11) % (canvas.height * 0.6);
+    const tw = 0.3 + 0.7 * Math.abs(Math.sin(time * 1.3 + i * 2.1));
+    ctx.globalAlpha = tw * 0.8;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawTitle() {
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawTwinkleStars();
 
   // Corazones flotando de fondo
   ctx.font = '18px serif';
@@ -825,8 +1075,8 @@ function drawTitle() {
 
   ctx.fillStyle = '#ffe9a8';
   ctx.font = 'bold 42px monospace';
-  ctx.fillText('Las Aventuras', canvas.width / 2, 120);
-  ctx.fillText('de Bambi', canvas.width / 2, 170);
+  glowText('Las Aventuras', canvas.width / 2, 120, '#ffcf7a');
+  glowText('de Bambi', canvas.width / 2, 170, '#ffcf7a');
 
   ctx.fillStyle = '#aaaacc';
   ctx.font = '16px monospace';
@@ -879,6 +1129,7 @@ function drawWin() {
   drawScene();
   ctx.fillStyle = 'rgba(10,10,25,0.85)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawTwinkleStars();
 
   // Lluvia de corazones
   ctx.font = '22px serif';
@@ -893,7 +1144,7 @@ function drawWin() {
 
   ctx.fillStyle = '#ff8fc0';
   ctx.font = 'bold 32px monospace';
-  ctx.fillText('♥ ¡Sebastián rescató a Pamela! ♥', canvas.width / 2, 130);
+  glowText('♥ ¡Sebastián rescató a Pamela! ♥', canvas.width / 2, 130, '#ff8fc0');
 
   ctx.drawImage(images.character, 0, 32, CHAR_W, CHAR_H, canvas.width / 2 - 74, 170, 64, 128);
   ctx.drawImage(images.pamela, 0, 96, CHAR_W, CHAR_H, canvas.width / 2 + 10, 170, 64, 128);
@@ -911,7 +1162,54 @@ function drawWin() {
 
   ctx.fillStyle = '#ffe9a8';
   ctx.font = 'bold 26px monospace';
-  ctx.fillText('FIN', canvas.width / 2, 415);
+  glowText('FIN', canvas.width / 2, 415, '#ffe9a8');
+  ctx.fillStyle = '#aaaacc';
+  ctx.font = '14px monospace';
+  if (Math.floor(time * 2) % 2 === 0) {
+    ctx.fillText(IS_TOUCH ? 'Toque la pantalla para continuar' : 'ENTER para continuar', canvas.width / 2, 450);
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawEpilogue() {
+  ctx.fillStyle = '#241733';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawTwinkleStars();
+
+  ctx.font = '20px serif';
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = 0.4;
+  for (let i = 0; i < 10; i++) {
+    const fx = (i * 121 + 50) % canvas.width;
+    const fy = (canvas.height + 40 - ((time * (16 + i * 3) + i * 61) % (canvas.height + 80)));
+    ctx.fillText(i % 3 === 0 ? '💫' : '💗', fx, fy);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#ffd9ea';
+  ctx.font = 'bold 24px monospace';
+  glowText('Su futuro juntos', canvas.width / 2, 55, '#ff9fc8');
+
+  ctx.drawImage(images.character, 0, 32, CHAR_W, CHAR_H, canvas.width / 2 - 120, 90, 56, 112);
+  ctx.drawImage(images.pamela, 0, 96, CHAR_W, CHAR_H, canvas.width / 2 - 40, 90, 56, 112);
+  ctx.drawImage(images.sasha, canvas.width / 2 + 12, 172, 34, 34);
+
+  ctx.font = '44px serif';
+  ctx.fillText('🐴', canvas.width / 2 - 165, 195);
+  ctx.font = '52px serif';
+  ctx.fillText('🧸', canvas.width / 2 + 155, 200);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '13px monospace';
+  wrapText(
+    'Ahora, además de Sasha, tienen a Apolo, un potrillo de ocho meses que ya corre junto a ustedes, y a Balu_chón, un peluche gigante que guarda cada abrazo pendiente. Pequeñas señales de la vida que están construyendo juntos, un día a la vez, mi amor.',
+    canvas.width / 2, 320, canvas.width - 140, 19
+  );
+
+  ctx.fillStyle = '#ff9fc8';
+  ctx.font = 'bold 15px monospace';
+  ctx.fillText('Y esto apenas comienza. ♥', canvas.width / 2, 415);
+
   ctx.fillStyle = '#aaaacc';
   ctx.font = '14px monospace';
   if (Math.floor(time * 2) % 2 === 0) {
@@ -993,6 +1291,8 @@ function drawQuiz() {
     }
   });
 
+  drawParticles();
+
   // Ayuda inferior
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
@@ -1018,6 +1318,9 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
   time += dt;
 
+  updateParticles(dt);
+  fade = Math.max(0, fade - dt * 1.8);
+
   if (state === 'title') {
     drawTitle();
   } else if (state === 'intro') {
@@ -1033,6 +1336,7 @@ function gameLoop(timestamp) {
     if (state === 'playing') {
       updateVillain(dt);
       updateHearts(dt);
+      updateAmbient(dt);
     }
     if (state === 'win') drawWin();
     else if (state === 'msg') { drawBackground(); drawTextBox(null, msgText); }
@@ -1041,6 +1345,16 @@ function gameLoop(timestamp) {
     else drawScene();
   } else if (state === 'win') {
     drawWin();
+  } else if (state === 'epilogue') {
+    drawEpilogue();
+  }
+
+  // Fundido entre escenas
+  if (fade > 0) {
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = fade;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
   }
 
   requestAnimationFrame(gameLoop);

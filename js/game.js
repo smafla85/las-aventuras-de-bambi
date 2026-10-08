@@ -172,6 +172,7 @@ const LEVELS = [
   {
     name: 'Nivel 3 — El Jardín de los Recuerdos',
     type: 'collect',
+    pets: true,
     theme: 'forest',
     start: { col: 9, row: 13 },
     intro: 'Antes de la Prueba del Corazón, un pequeño paseo. Recoja los cinco corazones escondidos en el jardín: cada uno guarda un recuerdo. Muévase con las flechas y déjese llevar, mi amor. ♥',
@@ -228,7 +229,48 @@ const LEVELS = [
     ],
   },
   {
-    name: 'Nivel 5 — El Castillo',
+    name: 'Nivel 5 — La Ruta del Café',
+    type: 'collect',
+    theme: 'forest',
+    music: 'garden',
+    start: { col: 9, row: 13 },
+    intro: 'Antes del Castillo, un último respiro: La Ruta del Café. Recorra las cafeterías de la ciudad y recoja los cinco recuerdos, pero cuidado — LA PRISA no deja disfrutar ni una sola taza. Véncala con ESPACIO: la salida se abrirá cuando haya recogido todo y la haya vencido.',
+    villain: { name: 'La Prisa', img: 'prisa', hp: 7, speed: 66, scale: 2.1, col: 14, row: 9,
+      defeat: 'La Prisa se disuelve como vapor de café... el amor no tiene prisa: solo tiempo para saborearlo, a su lado. ♥' },
+    decor: [
+      { e: '☕', c: 6, r: 8, s: 20 },
+      { e: '☕', c: 12, r: 8, s: 20 },
+      { e: '🥐', c: 7, r: 12, s: 18 },
+      { e: '🦋', c: 2, r: 3, s: 20, bob: true },
+      { e: '✨', c: 13, r: 6, s: 16, bob: true },
+      { e: '💗', c: 11, r: 10, s: 18, bob: true },
+    ],
+    collectibles: [
+      { col: 16, row: 5, text: 'Entre el aroma del espresso recién hecho, hasta la cafetería más sencilla se sentía como una cita especial. ♥' },
+      { col: 3, row: 9, text: 'No importaba cuál cafetería fuera: lo que de verdad sabía bien era el tiempo compartido con usted. ♥' },
+      { col: 15, row: 11, text: 'Una taza caliente, una charla larga y las ganas de no levantarse nunca de esa mesa. ♥' },
+      { col: 9, row: 2, text: 'Ninguna cafetería de la ciudad sabe tan bien como la que se visita de su mano, mi amor. ♥' },
+    ],
+    map: [
+      'TTTTTTTTTTTTTTTTTTTT',
+      'T..................T',
+      'T....f.............T',
+      'T...............f..T',
+      'T..................T',
+      'T...........WWW....T',
+      'T.b.........WWW....T',
+      'T........PPPPPPP...E',
+      'T........P.........E',
+      'T........P.......b.T',
+      'T........P.........T',
+      'T..f.....P.........T',
+      'T........P....f....T',
+      'T........P.........T',
+      'TTTTTTTTTTTTTTTTTTTT',
+    ],
+  },
+  {
+    name: 'Nivel 6 — El Castillo',
     theme: 'castle',
     start: { col: 9, row: 13 },
     intro: 'La sala del trono. Pamela y su fiel perrita Sasha están tan cerca... pero el último guardián es EL PASADO, el más difícil de vencer: rápido, pesado y terco. No mire atrás, Sebastián: lance todo su amor con ESPACIO.',
@@ -281,8 +323,16 @@ let quiz = null;            // estado del nivel de preguntas
 let quizOptionRects = [];   // cajas de las opciones (para tocar/clic)
 let collected = [];         // recuerdos recogidos en el Jardín (booleans)
 let particles = [];         // partículas de estallido (corazones)
+let dust = [];               // polvillo de pasos y pequeños detalles ambientales
 let fade = 1;                // fundido entre escenas (1 = negro, 0 = visible)
 let ambientTimer = 10, ambientText = '', ambientAlpha = 0; // mensajes dulces ambientales
+let shakeTime = 0, shakeMag = 0; // sacudida de pantalla (impacto de combate)
+
+function shake(mag, dur) {
+  if (mag < shakeMag) return; // no interrumpir una sacudida más fuerte en curso
+  shakeMag = mag;
+  shakeTime = dur;
+}
 
 function tileAt(col, row) {
   if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return 'T';
@@ -319,7 +369,7 @@ function loadLevel(i) {
     entitiesStatic = [];
     collected = [];
     state = 'intro';
-    AudioSys.play(level.theme);
+    AudioSys.play(level.music || level.theme);
     return;
   }
 
@@ -366,7 +416,7 @@ function loadLevel(i) {
     }
   }
   state = 'intro';
-  AudioSys.play(level.theme);
+  AudioSys.play(level.music || level.theme);
 }
 
 function showMsg(text, after) {
@@ -412,7 +462,7 @@ function answerQuiz(index) {
         state = 'quiz';
       } else {
         AudioSys.sfx.exit();
-        loadLevel(levelIndex + 1); // superada la prueba → El Castillo
+        loadLevel(levelIndex + 1); // superada la prueba → La Ruta del Café
       }
     });
   } else {
@@ -503,6 +553,7 @@ const player = {
   animTime: 0,
   iframes: 0,   // invulnerabilidad tras recibir daño
   shootCd: 0,   // recarga del lanzacorazones
+  stepTimer: 0, // para el polvillo de pasos
 };
 
 function moveAxis(dx, dy) {
@@ -535,8 +586,16 @@ function updatePlayer(dt) {
   moveAxis(dx * player.speed * dt, 0);
   moveAxis(0, dy * player.speed * dt);
 
-  if (player.moving) player.animTime += dt;
-  else player.animTime = 0;
+  if (player.moving) {
+    player.animTime += dt;
+    player.stepTimer -= dt;
+    if (player.stepTimer <= 0) {
+      spawnDust(player.x + player.w / 2, player.y + player.h);
+      player.stepTimer = 0.2;
+    }
+  } else {
+    player.animTime = 0;
+  }
 
   player.iframes = Math.max(0, player.iframes - dt);
   player.shootCd = Math.max(0, player.shootCd - dt);
@@ -555,7 +614,7 @@ function updatePlayer(dt) {
     AudioSys.sfx.shoot();
   }
 
-  // ¿Recogió un recuerdo? (Jardín de los Recuerdos)
+  // ¿Recogió un recuerdo? (niveles de recolección: Jardín, Ruta del Café)
   if (level.type === 'collect') {
     level.collectibles.forEach((c, idx) => {
       if (collected[idx]) return;
@@ -568,7 +627,9 @@ function updatePlayer(dt) {
         spawnBurst(cx, cy, '💗', 14);
         AudioSys.sfx.collect();
         const allDone = collected.every(Boolean);
-        showMsg(c.text, allDone ? () => { AudioSys.sfx.exit(); loadLevel(levelIndex + 1); } : null);
+        // Sin villano (Jardín): avanza directo. Con villano (Ruta del Café): aún falta vencerlo y salir por 'E'.
+        const after = allDone && !level.villain ? () => { AudioSys.sfx.exit(); loadLevel(levelIndex + 1); } : null;
+        showMsg(c.text, after);
       }
     });
   }
@@ -602,6 +663,7 @@ function hurtPlayer() {
   playerHp--;
   player.iframes = 1.2;
   AudioSys.sfx.hurt();
+  shake(5, 0.25);
   // Empujón lejos del villano
   if (villain) {
     const ang = Math.atan2(player.y - villain.y, player.x - villain.x);
@@ -674,6 +736,7 @@ function updateHearts(dt) {
       villain.hp--;
       villain.hitFlash = 0.18;
       AudioSys.sfx.hitVillain();
+      shake(2.5, 0.12);
       // Retrocede un poco al ser golpeado por el amor
       const ang = Math.atan2(villain.y - (player.y + player.h / 2), villain.x - (player.x + player.w / 2));
       villain.x += Math.cos(ang) * 22;
@@ -682,6 +745,7 @@ function updateHearts(dt) {
         villain.dead = true;
         AudioSys.sfx.villainDown();
         spawnBurst(villain.x, villain.y - 10 * villain.scale, '💗', 26);
+        shake(7, 0.3);
         showMsg(villain.defeat);
       }
     }
@@ -703,6 +767,8 @@ function drawVillain() {
   const dy = (player.y + player.h / 2) - villain.y;
   const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
   const frame = Math.floor(time * 5) % 4;
+
+  drawShadow(villain.x, villain.y, 15 * villain.scale, 5 * villain.scale);
 
   ctx.save();
   ctx.globalAlpha = villain.hitFlash > 0 ? 0.45 : 0.82 + Math.sin(time * 2.2) * 0.1;
@@ -771,6 +837,50 @@ function drawParticles() {
   ctx.textAlign = 'left';
 }
 
+// Polvillo sutil bajo los pies al caminar
+const DUST_LIFE = 0.4;
+function spawnDust(x, y) {
+  dust.push({
+    x: x + (Math.random() - 0.5) * 6,
+    y,
+    vx: (Math.random() - 0.5) * 8,
+    vy: -6 - Math.random() * 6,
+    life: DUST_LIFE,
+    size: 2 + Math.random() * 1.5,
+  });
+}
+
+function updateDust(dt) {
+  for (const d of dust) {
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    d.life -= dt;
+  }
+  dust = dust.filter((d) => d.life > 0);
+}
+
+function drawDust() {
+  for (const d of dust) {
+    ctx.globalAlpha = Math.max(0, d.life / DUST_LIFE) * 0.3;
+    ctx.fillStyle = '#fffaf0';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Sombra ovalada suave bajo un personaje
+function drawShadow(cx, feetY, rx, ry) {
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(cx, feetY - ry * 0.4, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // ============================================
 // SPRITES DE PERSONAJES
 // ============================================
@@ -781,6 +891,7 @@ function drawSprite(img, dirKey, frame, cx, feetY) {
 }
 
 function drawPlayer() {
+  drawShadow(player.x + player.w / 2, player.y + player.h, 13, 5);
   // Parpadea mientras es invulnerable
   if (player.iframes > 0 && Math.floor(time * 12) % 2 === 0) return;
   const frame = player.moving ? (Math.floor(player.animTime * 8) % 4) : 0;
@@ -790,11 +901,13 @@ function drawPlayer() {
 function drawSasha() {
   // La perrita Sasha (negra, collar rosa), siempre junto a Pamela
   const bob = Math.sin(time * 4) * 2;
+  drawShadow(pamela.x + 38, pamela.y + 2, 12, 4);
   ctx.drawImage(images.sasha, pamela.x + 24, pamela.y - 28 + bob, 28, 28);
 }
 
 function drawPamela() {
   const frame = Math.floor(time * 2) % 2 === 0 ? 0 : 2;
+  drawShadow(pamela.x, pamela.y, 13, 5);
   drawSprite(images.pamela, 'down', frame, pamela.x, pamela.y);
   // Corazoncito flotando sobre Pamela cuando el camino está libre
   if (!villain || villain.dead) {
@@ -817,7 +930,11 @@ function drawGroundForest() {
       const x = col * TILE;
       const y = row * TILE;
 
-      if (t === 'W') { drawAutoTile(images.overworld, WATER_BLOCK, 'W', col, row, x, y); continue; }
+      if (t === 'W') {
+        drawAutoTile(images.overworld, WATER_BLOCK, 'W', col, row, x, y);
+        drawWaterSparkle(col, row, x, y);
+        continue;
+      }
       if (t === 'P' || t === 'E') { drawAutoTile(images.overworld, PATH_BLOCK, 'PE', col, row, x, y); continue; }
 
       drawTile(images.overworld, T_GRASS[0], T_GRASS[1], x, y);
@@ -828,6 +945,23 @@ function drawGroundForest() {
       if (t === 'b') drawTile(images.overworld, T_ROCK[0], T_ROCK[1], x, y);
     }
   }
+}
+
+// Destello suave y periódico sobre el agua, distinto por cada tile
+function drawWaterSparkle(col, row, x, y) {
+  const phase = (tileHash(col, row) % 1000) / 1000 * Math.PI * 2;
+  const pulse = Math.max(0, Math.sin(time * 1.4 + phase));
+  const glow = Math.pow(pulse, 6);
+  if (glow < 0.04) return;
+  const sx = x + 8 + (tileHash(col, row + 1) % 16);
+  const sy = y + 8 + (tileHash(col + 1, row) % 16);
+  ctx.save();
+  ctx.globalAlpha = glow * 0.8;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(sx, sy, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawGroundCave() {
@@ -874,8 +1008,18 @@ function drawDecor() {
 function drawTree(col, row) {
   const x = col * TILE;
   const y = row * TILE;
-  ctx.drawImage(images.overworld, TREE.x, TREE.y, TREE.w, TREE.h,
-    x - TILE / 2, y + TILE - TREE.h * 2, TREE.w * 2, TREE.h * 2);
+  const w = TREE.w * 2;
+  const h = TREE.h * 2;
+  const baseX = x - TILE / 2 + w / 2; // centro de la base del árbol (pivote del balanceo)
+  const baseY = y + TILE;
+  const phase = (tileHash(col, row) % 1000) / 1000 * Math.PI * 2;
+  const angle = Math.sin(time * 0.8 + phase) * 0.025;
+
+  ctx.save();
+  ctx.translate(baseX, baseY);
+  ctx.rotate(angle);
+  ctx.drawImage(images.overworld, TREE.x, TREE.y, TREE.w, TREE.h, -w / 2, -h, w, h);
+  ctx.restore();
 }
 
 function drawStatue(col, row) {
@@ -894,6 +1038,7 @@ function drawApolo() {
   const x = baseX + Math.sin(t) * range;
   const dir = Math.cos(t) >= 0 ? 1 : -1;
   const bob = Math.abs(Math.sin(t * 4)) * 3;
+  drawShadow(x, baseY, 16, 5);
   ctx.save();
   ctx.font = '40px serif';
   ctx.textAlign = 'center';
@@ -908,6 +1053,7 @@ function drawBaluChon() {
   const x = 15 * TILE + TILE / 2;
   const y = 9 * TILE + TILE;
   const bob = Math.sin(time * 1.5) * 3;
+  drawShadow(x, y, 20, 6);
   ctx.font = '64px serif';
   ctx.textAlign = 'center';
   ctx.fillText('🧸', x, y + bob);
@@ -960,8 +1106,8 @@ function drawHud() {
     ctx.fillText('Recuerdos: ' + done + ' / ' + level.collectibles.length, 12, 50);
   }
 
-  // Vidas de Sebastián (con pulso si está en peligro)
-  if (level.type !== 'collect') {
+  // Vidas de Sebastián (con pulso si está en peligro) — se muestran siempre que haya villano
+  if (level.villain) {
     ctx.font = '18px serif';
     const lowHp = playerHp <= 2;
     const pulse = lowHp ? 0.75 + Math.sin(time * 8) * 0.25 : 1;
@@ -992,19 +1138,25 @@ function drawHud() {
 }
 
 function drawScene() {
+  ctx.save();
+  if (shakeTime > 0) {
+    ctx.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
+  }
+
   if (level.theme === 'forest') drawGroundForest();
   else if (level.theme === 'cave') drawGroundCave();
   else drawGroundCastle();
 
   drawDecor();
   drawCollectibles();
+  drawDust();
 
   const entities = entitiesStatic.slice();
   entities.push({ baseline: player.y + player.h, draw: drawPlayer });
   if (villain && !villain.dead) {
     entities.push({ baseline: villain.y, draw: drawVillain });
   }
-  if (level.type === 'collect') {
+  if (level.pets) {
     entities.push({ baseline: 6 * TILE + TILE, draw: drawApolo });
     entities.push({ baseline: 9 * TILE + TILE, draw: drawBaluChon });
   }
@@ -1014,6 +1166,8 @@ function drawScene() {
   drawHearts();
   drawParticles();
   drawVignette();
+  ctx.restore();
+
   drawHud();
 }
 
@@ -1319,6 +1473,8 @@ function gameLoop(timestamp) {
   time += dt;
 
   updateParticles(dt);
+  updateDust(dt);
+  if (shakeTime > 0) { shakeTime -= dt; if (shakeTime <= 0) shakeMag = 0; }
   fade = Math.max(0, fade - dt * 1.8);
 
   if (state === 'title') {
@@ -1367,6 +1523,7 @@ Promise.all([
   loadImage('miedo', 'assets/miedo.png'),
   loadImage('dudas', 'assets/dudas.png'),
   loadImage('pasado', 'assets/pasado.png'),
+  loadImage('prisa', 'assets/prisa.png'),
   loadImage('overworld', 'assets/Overworld.png'),
   loadImage('cave', 'assets/cave.png'),
   loadImage('inner', 'assets/Inner.png'),
